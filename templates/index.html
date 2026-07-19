@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <title>PubMed KOL Extractor</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+</head>
+
+<body>
+
+<div class="container mt-5">
+
+    <div class="card shadow-lg">
+
+        <div class="card-header bg-primary text-white text-center">
+
+            <h2>🧬 PubMed KOL Extractor</h2>
+
+            <p class="mb-0">
+                Search & Extract Author Details
+            </p>
+
+        </div>
+
+        <div class="card-body">
+
+            <h4>🔍 Disease Keyword Search</h4>
+
+            <form action="/extract" method="POST">
+
+                <input type="hidden" name="search_type" value="keyword">
+
+                <div class="mb-3">
+
+                    <label>Disease Keyword</label>
+
+                    <input
+                        type="text"
+                        class="form-control"
+                        name="keyword"
+                        required>
+
+                </div>
+
+                <div class="row">
+
+                    <div class="col">
+
+                        <label>Start Year</label>
+
+                        <input
+                            type="number"
+                            class="form-control"
+                            name="start_year"
+                            value="2024">
+
+                    </div>
+
+                    <div class="col">
+
+                        <label>End Year</label>
+
+                        <input
+                            type="number"
+                            class="form-control"
+                            name="end_year"
+                            value="2024">
+
+                    </div>
+
+                    <div class="col">
+
+                        <label>Maximum Articles</label>
+
+                        <input
+                            type="number"
+                            class="form-control"
+                            name="retmax"
+                            value="500">
+
+                    </div>
+
+                </div>
+
+                <br>
+
+                <button class="btn btn-success btn-lg w-100">
+
+                    Extract Author Details
+
+                </button>
+
+            </form>
+
+            <hr>
+
+            <h4>🔗 Search by PubMed URL</h4>
+
+            <form action="/extract" method="POST">
+
+                <input type="hidden" name="search_type" value="url">
+
+                <div class="mb-3">
+
+                    <textarea
+                        class="form-control"
+                        rows="5"
+                        name="url"
+                        placeholder="Paste PubMed URL here"
+                        required></textarea>
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label>Maximum Articles</label>
+
+                    <input
+                        type="number"
+                        class="form-control"
+                        name="retmax"
+                        value="500">
+
+                </div>
+
+                <button class="btn btn-primary btn-lg w-100">
+
+                    Extract Author Details
+
+                </button>
+
+            </form>
+
+        </div>
+
+        <div class="card-footer text-center">
+
+            Developed by <b>Peerappa Belamge</b>
+
+        </div>
+
+    </div>
+
+</div>
+
+</body>
+
+</html>

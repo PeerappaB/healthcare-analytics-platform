@@ -1,0 +1,41 @@
+body{
+
+    background:#eef2f7;
+
+}
+
+.card{
+
+    border-radius:20px;
+
+}
+
+.card-header{
+
+    border-radius:20px 20px 0 0 !important;
+
+}
+
+.btn{
+
+    border-radius:12px;
+
+    font-size:18px;
+
+    font-weight:bold;
+
+}
+
+textarea{
+
+    resize:none;
+
+}
+
+.card-footer{
+
+    background:white;
+
+    font-size:14px;
+
+}
