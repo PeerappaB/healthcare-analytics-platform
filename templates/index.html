@@ -1,155 +1,122 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<head>
-
-    <meta charset="UTF-8">
-
+  <head>
+    <meta charset="UTF-8" />
     <title>PubMed KOL Extractor</title>
-
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-
-</head>
-
-<body>
-
-<div class="container mt-5">
-
-    <div class="card shadow-lg">
-
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <div class="container mt-5">
+      <div class="card shadow-lg">
         <div class="card-header bg-primary text-white text-center">
-
-            <h2>🧬 PubMed KOL Extractor</h2>
-
-            <p class="mb-0">
-                Search & Extract Author Details
-            </p>
-
+          <h2>🧬 PubMed KOL Extractor</h2>
+          <p class="mb-0">Search &amp; Extract Author Details</p>
         </div>
 
         <div class="card-body">
+          <h4>🔍 Disease Keyword Search</h4>
 
-            <h4>🔍 Disease Keyword Search</h4>
+          <form action="/extract" method="post">
+            <input type="hidden" name="search_type" value="keyword" />
 
-            <form action="/extract" method="POST">
+            <div class="mb-3">
+              <label for="keyword" class="form-label">Disease Keyword</label>
+              <input type="text" class="form-control" id="keyword" name="keyword" required />
+            </div>
 
-                <input type="hidden" name="search_type" value="keyword">
+            <div class="row">
+              <div class="col">
+                <label for="start_year" class="form-label">Start Year</label>
+                <input type="number" class="form-control" id="start_year" name="start_year" value="2024" />
+              </div>
+              <div class="col">
+                <label for="end_year" class="form-label">End Year</label>
+                <input type="number" class="form-control" id="end_year" name="end_year" value="2024" />
+              </div>
+              <div class="col">
+                <label for="retmax_keyword" class="form-label">Maximum Articles</label>
+                <input type="number" class="form-control" id="retmax_keyword" name="retmax" value="500" />
+              </div>
+            </div>
 
-                <div class="mb-3">
+            <hr />
 
-                    <label>Disease Keyword</label>
+            <h5>Output Options</h5>
 
-                    <input
-                        type="text"
-                        class="form-control"
-                        name="keyword"
-                        required>
+            <div class="mb-3">
+              <label for="keyword_output_type" class="form-label"><strong>Select Output Type</strong></label>
+              <select class="form-select" name="output_choice" id="keyword_output_type">
+                <option value="1">Full Output</option>
+                <option value="2">Custom Columns</option>
+              </select>
+            </div>
 
-                </div>
+            <div id="keyword_columns" style="display: none;">
+              <div class="row">
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="PMID" /> PMID</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Title" /> Title</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Journal" /> Journal</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Year" /> Year</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="DOI" /> DOI</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Author Full Name" /> Author Full Name</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Author Position" /> Author Position</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Affiliation" /> Affiliation</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Country" /> Country</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Email ID" /> Email ID</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Trial ID" /> Trial ID</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Grant ID" /> Grant ID</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Publication Type" /> Publication Type</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="MeSH Terms" /> MeSH Terms</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Keywords" /> Keywords</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Abstract" /> Abstract</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Department" /> Department</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Institution" /> Institution</label></div>
+              </div>
+            </div>
 
-                <div class="row">
+            <br />
+            <button class="btn btn-success btn-lg w-100" type="submit">Extract Author Details</button>
+          </form>
 
-                    <div class="col">
+          <hr />
 
-                        <label>Start Year</label>
+          <h4>🔗 Search by PubMed URL</h4>
 
-                        <input
-                            type="number"
-                            class="form-control"
-                            name="start_year"
-                            value="2024">
+          <form action="/extract" method="post">
+            <input type="hidden" name="search_type" value="url" />
 
-                    </div>
+            <div class="mb-3">
+              <label for="pubmed_url" class="form-label">PubMed URL</label>
+              <textarea class="form-control" id="pubmed_url" rows="5" name="url" placeholder="Paste PubMed URL here" required></textarea>
+            </div>
 
-                    <div class="col">
+            <div class="mb-3">
+              <label for="retmax_url" class="form-label">Maximum Articles</label>
+              <input type="number" class="form-control" id="retmax_url" name="retmax" value="500" />
+            </div>
 
-                        <label>End Year</label>
-
-                        <input
-                            type="number"
-                            class="form-control"
-                            name="end_year"
-                            value="2024">
-
-                    </div>
-
-                    <div class="col">
-
-                        <label>Maximum Articles</label>
-
-                        <input
-                            type="number"
-                            class="form-control"
-                            name="retmax"
-                            value="500">
-
-                    </div>
-
-                </div>
-
-                <br>
-
-                <button class="btn btn-success btn-lg w-100">
-
-                    Extract Author Details
-
-                </button>
-
-            </form>
-
-            <hr>
-
-            <h4>🔗 Search by PubMed URL</h4>
-
-            <form action="/extract" method="POST">
-
-                <input type="hidden" name="search_type" value="url">
-
-                <div class="mb-3">
-
-                    <textarea
-                        class="form-control"
-                        rows="5"
-                        name="url"
-                        placeholder="Paste PubMed URL here"
-                        required></textarea>
-
-                </div>
-
-                <div class="mb-3">
-
-                    <label>Maximum Articles</label>
-
-                    <input
-                        type="number"
-                        class="form-control"
-                        name="retmax"
-                        value="500">
-
-                </div>
-
-                <button class="btn btn-primary btn-lg w-100">
-
-                    Extract Author Details
-
-                </button>
-
-            </form>
-
+            <button class="btn btn-primary btn-lg w-100" type="submit">Extract Author Details</button>
+          </form>
         </div>
 
         <div class="card-footer text-center">
-
-            Developed by <b>Peerappa Belamge</b>
-
+          Developed by <strong>Peerappa Belamge</strong>
         </div>
-
+      </div>
     </div>
 
-</div>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const outputType = document.getElementById("keyword_output_type");
+        const columnsSection = document.getElementById("keyword_columns");
 
-</body>
-
+        if (outputType && columnsSection) {
+          outputType.addEventListener("change", function () {
+            columnsSection.style.display = this.value === "2" ? "block" : "none";
+          });
+        }
+      });
+    </script>
+  </body>
 </html>
