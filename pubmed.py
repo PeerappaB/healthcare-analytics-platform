@@ -123,6 +123,83 @@ def safe_text(value):
 
 
 # --------------------------------------------------
+# PUBMED URL FILTERS -> SEARCH QUERY
+# --------------------------------------------------
+
+_PUBTYPE_MAP = {
+    "clinicaltrial": "Clinical Trial",
+    "randomizedcontrolledtrial": "Randomized Controlled Trial",
+    "review": "Review",
+    "systematicreview": "Systematic Review",
+    "metaanalysis": "Meta-Analysis",
+    "meta-analysis": "Meta-Analysis",
+    "casereports": "Case Reports",
+    "observationalstudy": "Observational Study",
+    "guideline": "Guideline",
+    "editorial": "Editorial",
+    "letter": "Letter",
+}
+
+
+def url_filters_to_query(filters):
+    """
+    Convert the sidebar filters in a PubMed URL (&filter=...) into
+    search clauses. Filters of the same kind (e.g. several article
+    types) are OR-ed; different kinds are AND-ed.
+    """
+    pubtypes = []
+    clauses = []
+
+    for f in filters:
+        f = unquote(f).strip()
+        key, _, value = f.partition(".")
+        key = key.lower()
+
+        if f == "articleattr.data":
+            clauses.append("data[sb]")
+
+        elif key == "years" and "-" in value:
+            a, b = value.split("-", 1)
+            clauses.append(f'("{a}/01/01"[dp] : "{b}/12/31"[dp])')
+
+        elif key == "dates" and "-" in value:
+            a, b = value.split("-", 1)
+            clauses.append(f'("{a}"[dp] : "{b}"[dp])')
+
+        elif key == "pubt" and value.lower() in _PUBTYPE_MAP:
+            pubtypes.append(f'"{_PUBTYPE_MAP[value.lower()]}"[pt]')
+
+        elif key == "lang":
+            clauses.append(f"{value}[lang]")
+
+        elif key == "hum_ani" and value.lower() in {"humans", "animals"}:
+            clauses.append(f"{value.lower()}[mh]")
+
+        elif key == "sex" and value.lower() in {"male", "female"}:
+            clauses.append(f"{value.lower()}[mh]")
+
+        elif f == "hasabstract":
+            clauses.append("hasabstract")
+
+        elif f == "simsearch1.fha":
+            clauses.append("hasabstract")
+
+        elif f == "simsearch2.ffrft":
+            clauses.append('"free full text"[sb]')
+
+        elif f == "simsearch3.fft":
+            clauses.append('"full text"[sb]')
+
+        else:
+            print("Unsupported URL filter ignored:", f)
+
+    if pubtypes:
+        clauses.append("(" + " OR ".join(pubtypes) + ")")
+
+    return clauses
+
+
+# --------------------------------------------------
 # NCBI CALLS WITH RETRY
 # --------------------------------------------------
 
@@ -315,10 +392,8 @@ def extract_pubmed(
         if "term" not in params:
             raise ValueError("Invalid PubMed URL")
         QUERY = unquote(params["term"][0])
-        if "filter" in params:
-            for f in params["filter"]:
-                if f == "articleattr.data":
-                    QUERY += " AND data[sb]"
+        for clause in url_filters_to_query(params.get("filter", [])):
+            QUERY += f" AND {clause}"
     else:
         raise ValueError("Invalid Search Type")
 

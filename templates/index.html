@@ -46,7 +46,7 @@
 
             <div class="mb-3">
               <label for="keyword_output_type" class="form-label"><strong>Select Output Type</strong></label>
-              <select class="form-select" name="output_choice" id="keyword_output_type">
+              <select class="form-select output-type" name="output_choice" id="keyword_output_type" data-columns="keyword_columns">
                 <option value="1">Full Output</option>
                 <option value="2">Custom Columns</option>
               </select>
@@ -96,6 +96,42 @@
               <input type="number" class="form-control" id="retmax_url" name="retmax" value="500" />
             </div>
 
+            <hr />
+
+            <h5>Output Options</h5>
+
+            <div class="mb-3">
+              <label for="url_output_type" class="form-label"><strong>Select Output Type</strong></label>
+              <select class="form-select output-type" name="output_choice" id="url_output_type" data-columns="url_columns">
+                <option value="1">Full Output</option>
+                <option value="2">Custom Columns</option>
+              </select>
+            </div>
+
+            <div id="url_columns" style="display: none;">
+              <div class="row">
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="PMID" /> PMID</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Title" /> Title</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Journal" /> Journal</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Year" /> Year</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="DOI" /> DOI</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Author Full Name" /> Author Full Name</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Author Position" /> Author Position</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Affiliation" /> Affiliation</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Country" /> Country</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Email ID" /> Email ID</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Trial ID" /> Trial ID</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Grant ID" /> Grant ID</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Publication Type" /> Publication Type</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="MeSH Terms" /> MeSH Terms</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Keywords" /> Keywords</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Abstract" /> Abstract</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Department" /> Department</label></div>
+                <div class="col-md-4"><label><input type="checkbox" name="columns" value="Institution" /> Institution</label></div>
+              </div>
+            </div>
+
+            <br />
             <button class="btn btn-primary btn-lg w-100" type="submit">Extract Author Details</button>
           </form>
         </div>
@@ -108,14 +144,19 @@
 
     <script>
       document.addEventListener("DOMContentLoaded", function () {
-        const outputType = document.getElementById("keyword_output_type");
-        const columnsSection = document.getElementById("keyword_columns");
+        // Show the column checkboxes only when "Custom Columns" is selected
+        // (works for both the keyword form and the URL form)
+        document.querySelectorAll("select.output-type").forEach(function (select) {
+          const columnsSection = document.getElementById(select.dataset.columns);
+          if (!columnsSection) return;
 
-        if (outputType && columnsSection) {
-          outputType.addEventListener("change", function () {
-            columnsSection.style.display = this.value === "2" ? "block" : "none";
-          });
-        }
+          const toggle = function () {
+            columnsSection.style.display = select.value === "2" ? "block" : "none";
+          };
+
+          select.addEventListener("change", toggle);
+          toggle();
+        });
       });
     </script>
   </body>
