@@ -1,18 +1,19 @@
 from Bio import Entrez
-import pandas as pd
+import csv
+import gc
 import re
 import os
 import time
 import tempfile
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse, parse_qs, unquote
 from datetime import datetime
 
 # --------------------------------------------------
 # NCBI SETTINGS
 # --------------------------------------------------
-# Set NCBI_API_KEY as an environment variable for ~3x faster extraction
+# Set NCBI_API_KEY as an environment variable for faster extraction
 # (free key: https://account.ncbi.nlm.nih.gov/settings/ -> API Key Management)
 
 Entrez.email = os.environ.get("NCBI_EMAIL", "bgpeeru@gmail.com")
@@ -20,21 +21,34 @@ API_KEY = os.environ.get("NCBI_API_KEY")
 if API_KEY:
     Entrez.api_key = API_KEY
 
-# NCBI limits: 3 requests/sec without a key, 10/sec with a key
+# NCBI limits: 3 requests/sec without a key, 10/sec with a key.
+# Worker count and batch size are kept small on purpose: every worker holds
+# one parsed XML batch in memory, and Render's free instance has only 512 MB.
 if API_KEY:
-    MAX_WORKERS = 8
+    MAX_WORKERS = 4
     MIN_INTERVAL = 0.11
 else:
-    MAX_WORKERS = 4
+    MAX_WORKERS = 3
     MIN_INTERVAL = 0.35
 
-BATCH_SIZE = 200
+BATCH_SIZE = 100
 MAX_RETRIES = 4
 RETRY_DELAY = 1.5
 MAX_RECORDS = 9999  # esearch hard limit per query
 
 OUTPUT_DIR = os.path.join(tempfile.gettempdir(), "pubmed_output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+ALL_COLUMNS = [
+    "PMID", "Title", "Journal", "Year", "DOI", "Author Full Name",
+    "Author Position", "Affiliation", "Country", "Email ID", "Trial ID",
+    "Grant ID", "Publication Type", "MeSH Terms", "Keywords", "Abstract",
+    "Department", "Institution"
+]
+
+# Only one extraction runs at a time, so two users clicking at once
+# cannot double the memory use.
+_EXTRACT_SLOT = threading.Semaphore(1)
 
 # --------------------------------------------------
 # RATE LIMITER (shared by all threads)
@@ -242,47 +256,58 @@ def fetch_batch(batch_ids):
 # --------------------------------------------------
 # PARSE ONE ARTICLE -> LIST OF AUTHOR ROWS
 # --------------------------------------------------
+# `need` is the set of columns the user asked for (None = all columns).
+# Expensive fields (abstract, trial IDs, affiliations) are skipped when
+# they are not needed, which saves both time and memory.
 
-def parse_article(article):
+def parse_article(article, need=None):
+    def want(*cols):
+        return need is None or any(c in need for c in cols)
+
     rows = []
 
     medline = article["MedlineCitation"]
     article_data = medline["Article"]
     pmid = str(medline["PMID"])
 
-    title = safe_text(article_data.get("ArticleTitle", ""))
+    title = safe_text(article_data.get("ArticleTitle", "")) if want("Title") else ""
 
     journal = ""
     year = ""
-    try:
-        journal = safe_text(article_data["Journal"]["Title"])
-        pub_date = article_data["Journal"]["JournalIssue"]["PubDate"]
-        year = safe_text(pub_date.get("Year", "")) or safe_text(
-            pub_date.get("MedlineDate", "")
-        )
-    except Exception:
-        pass
+    if want("Journal", "Year"):
+        try:
+            journal = safe_text(article_data["Journal"]["Title"])
+            pub_date = article_data["Journal"]["JournalIssue"]["PubDate"]
+            year = safe_text(pub_date.get("Year", "")) or safe_text(
+                pub_date.get("MedlineDate", "")
+            )
+        except Exception:
+            pass
 
     doi = ""
-    try:
-        for eid in article_data.get("ELocationID", []):
-            if eid.attributes.get("EIdType") == "doi":
-                doi = str(eid)
-                break
-    except Exception:
-        pass
+    if want("DOI"):
+        try:
+            for eid in article_data.get("ELocationID", []):
+                if eid.attributes.get("EIdType") == "doi":
+                    doi = str(eid)
+                    break
+        except Exception:
+            pass
 
     abstract = ""
-    try:
-        parts = []
-        for item in article_data["Abstract"]["AbstractText"]:
-            label = item.attributes.get("Label", "")
-            parts.append(f"{label}: {item}" if label else str(item))
-        abstract = " ".join(parts)
-    except Exception:
-        pass
+    if want("Abstract"):
+        try:
+            parts = []
+            for item in article_data["Abstract"]["AbstractText"]:
+                label = item.attributes.get("Label", "")
+                parts.append(f"{label}: {item}" if label else str(item))
+            abstract = " ".join(parts)
+        except Exception:
+            pass
 
-    trial_id = extract_trial_ids(article)
+    trial_id = extract_trial_ids(article) if want("Trial ID") else ""
+
+    need_aff = want("Affiliation", "Country", "Email ID")
 
     authors = article_data.get("AuthorList", [])
     total_authors = len(authors)
@@ -309,7 +334,7 @@ def parse_article(article):
             email = ""
             country = ""
 
-            if "AffiliationInfo" in author:
+            if need_aff and "AffiliationInfo" in author:
                 aff_list = []
                 for aff in author["AffiliationInfo"]:
                     txt = safe_text(aff.get("Affiliation", ""))
@@ -347,15 +372,31 @@ def parse_article(article):
     return rows
 
 
-def process_batch(batch_ids):
+def process_batch(batch_ids, need=None):
     records = fetch_batch(batch_ids)
     rows = []
     for article in records.get("PubmedArticle", []):
         try:
-            rows.extend(parse_article(article))
+            rows.extend(parse_article(article, need))
         except Exception as e:
             print("Skipped article:", e)
+    del records
     return rows
+
+
+def _cleanup_old_outputs(max_age_seconds=3600):
+    """Delete CSVs from earlier runs so the temp disk does not fill up."""
+    now = time.time()
+    try:
+        for name in os.listdir(OUTPUT_DIR):
+            path = os.path.join(OUTPUT_DIR, name)
+            if os.path.isfile(path) and now - os.path.getmtime(path) > max_age_seconds:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+    except OSError:
+        pass
 
 
 # --------------------------------------------------
@@ -379,6 +420,25 @@ def extract_pubmed(
 
     retmax = max(1, min(int(retmax), MAX_RECORDS))
 
+    # ---------------- OUTPUT SELECTION (validated up front) ----------------
+    is_custom_output = str(output_choice).strip().lower() in {
+        "2", "custom", "custom columns"
+    }
+
+    if is_custom_output:
+        if not selected_columns:
+            raise Exception("Please select at least one column.")
+
+        columns = list(dict.fromkeys(selected_columns))
+        missing = [c for c in columns if c not in ALL_COLUMNS]
+        if missing:
+            raise Exception(f"Invalid columns selected: {missing}")
+
+        need = set(columns)
+    else:
+        columns = list(ALL_COLUMNS)
+        need = None
+
     # ---------------- BUILD QUERY ----------------
     if search_type == "keyword":
         QUERY = (
@@ -399,70 +459,83 @@ def extract_pubmed(
 
     print("Query:", QUERY, "| Requested:", retmax)
 
-    # ---------------- SEARCH ----------------
-    search = search_pubmed_with_retry(QUERY, retmax)
-    pmids = list(search["IdList"])
-    print("Total found:", search.get("Count", 0), "| Selected:", len(pmids))
+    # Only one extraction at a time (keeps memory use predictable)
+    with _EXTRACT_SLOT:
 
-    if not pmids:
-        raise Exception("No records found.")
+        _cleanup_old_outputs()
 
-    # ---------------- PARALLEL FETCH ----------------
-    batches = [pmids[i:i + BATCH_SIZE] for i in range(0, len(pmids), BATCH_SIZE)]
-    results = {}
-    failed = []
+        # ---------------- SEARCH ----------------
+        search = search_pubmed_with_retry(QUERY, retmax)
+        pmids = list(search["IdList"])
+        print("Total found:", search.get("Count", 0), "| Selected:", len(pmids))
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        futures = {pool.submit(process_batch, b): idx for idx, b in enumerate(batches)}
-        for fut in as_completed(futures):
-            idx = futures[fut]
+        if not pmids:
+            raise Exception("No records found.")
+
+        batches = [pmids[i:i + BATCH_SIZE] for i in range(0, len(pmids), BATCH_SIZE)]
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = os.path.join(OUTPUT_DIR, f"PubMed_Author_Level_{timestamp}.csv")
+
+        def run(batch):
             try:
-                results[idx] = fut.result()
-                print(f"Batch {idx + 1}/{len(batches)} done ({len(results[idx])} rows)")
+                return process_batch(batch, need)
             except Exception as e:
-                failed.append(idx)
-                print(f"Batch {idx + 1} FAILED: {e}")
+                print("Batch FAILED:", e)
+                return None
 
-    # Keep original PubMed order
-    rows = []
-    for idx in sorted(results):
-        rows.extend(results[idx])
+        failed = 0
+        total_rows = 0
+        seen_authors = set()   # (PMID, author) pairs already written
+        seen_rows = set()      # hashes of selected-column rows (custom output)
 
-    df = pd.DataFrame(rows)
+        # ---------------- PARALLEL FETCH, STREAMED TO DISK ----------------
+        # Rows are written to the CSV as each batch finishes instead of being
+        # collected in memory first. pool.map returns results in PubMed order.
+        with open(output_file, "w", newline="", encoding="utf-8-sig") as f, \
+                ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
 
-    if df.empty:
-        raise Exception(
-            "No records could be extracted. "
-            "Check the search query or PubMed response."
-        )
+            writer = csv.writer(f)
+            writer.writerow(columns)
 
-    df = df.drop_duplicates(subset=["PMID", "Author Full Name"])
+            for idx, rows in enumerate(pool.map(run, batches), start=1):
+                if rows is None:
+                    failed += 1
+                    continue
 
-    # ---------------- OUTPUT SELECTION ----------------
-    is_custom_output = str(output_choice).strip().lower() in {
-        "2", "custom", "custom columns"
-    }
+                for r in rows:
+                    key = (r["PMID"], r["Author Full Name"])
+                    if key in seen_authors:
+                        continue
+                    seen_authors.add(key)
 
-    if is_custom_output:
-        if not selected_columns:
-            raise Exception("Please select at least one column.")
+                    values = [r[c] for c in columns]
 
-        selected_columns = list(dict.fromkeys(selected_columns))
-        missing = [c for c in selected_columns if c not in df.columns]
-        if missing:
-            raise Exception(f"Invalid columns selected: {missing}")
+                    if is_custom_output:
+                        h = hash(tuple(values))
+                        if h in seen_rows:
+                            continue
+                        seen_rows.add(h)
 
-        final_df = df.loc[:, selected_columns].drop_duplicates()
-    else:
-        final_df = df
+                    writer.writerow(values)
+                    total_rows += 1
 
-    # ---------------- SAVE ----------------
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = os.path.join(OUTPUT_DIR, f"PubMed_Author_Level_{timestamp}.csv")
-    final_df.to_csv(output_file, index=False, encoding="utf-8-sig")
+                print(f"Batch {idx}/{len(batches)} done | rows so far: {total_rows}")
+                del rows
+                gc.collect()
+
+        if total_rows == 0:
+            try:
+                os.remove(output_file)
+            except OSError:
+                pass
+            raise Exception(
+                "No records could be extracted. "
+                "Check the search query or PubMed response."
+            )
 
     print(
-        f"DONE: {len(final_df)} rows, {len(batches) - len(failed)}/{len(batches)} "
+        f"DONE: {total_rows} rows, {len(batches) - failed}/{len(batches)} "
         f"batches OK, {time.time() - t0:.1f}s -> {output_file}"
     )
 
